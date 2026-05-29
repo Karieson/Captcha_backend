@@ -1,51 +1,59 @@
 const express = require("express");
-const session = require("express-session");
+const axios = require("axios");
 const cors = require("cors");
-const svgCaptcha = require("svg-captcha");
 
 const app = express();
 
-app.use(cors({ origin: "*" }));
-
 app.use(express.json());
 
-app.use(
-  session({
-    secret: "captcha-secret",
-    resave: false,
-    saveUninitialized: true
-  })
-);
+/* -------------------------
+   ALLOW MULTIPLE FRONTENDS
+-------------------------- */
+const allowedOrigins = [
+  "https://garissadigitaltraining.onrender.com",
+  "https://gdehworkshops.onrender.com"
+];
 
-app.get("/captcha", (req, res) => {
+app.use(cors({
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error("Not allowed by CORS"));
+  }
+}));
 
-  const captcha = svgCaptcha.create({
-    size: 6,
-    noise: 3,
-    color: true,
-    background: "#f4f4f4"
-  });
+/* -------------------------
+   GOOGLE SECRET KEY
+-------------------------- */
+const SECRET_KEY = process.env.RECAPTCHA_SECRET;
 
-  req.session.captcha = captcha.text;
+/* -------------------------
+   VERIFY CAPTCHA
+-------------------------- */
+app.post("/verify-captcha", async (req, res) => {
+  try {
+    const token = req.body.token;
 
-  res.json({
-    image:
-      "data:image/svg+xml;base64," +
-      Buffer.from(captcha.data).toString("base64")
-  });
+    const response = await axios.post(
+      "https://www.google.com/recaptcha/api/siteverify",
+      null,
+      {
+        params: {
+          secret: SECRET_KEY,
+          response: token
+        }
+      }
+    );
 
-});
+    res.json({
+      success: response.data.success
+    });
 
-app.post("/verify", (req, res) => {
-
-  const user =
-    (req.body.code || "").toUpperCase();
-
-  const success =
-    user === req.session.captcha;
-
-  res.json({ success });
-
+  } catch (err) {
+    res.json({ success: false });
+  }
 });
 
 app.listen(process.env.PORT || 3000);
